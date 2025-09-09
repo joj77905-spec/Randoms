@@ -1,82 +1,71 @@
--- Free Source Obfuscater..
--- This file is hosted on GitHub..
+-- If You Look At This File Your Gay!
 
-return function()
-    local function obfuscateScript(code)
-        local function randStr(n)
-            local c="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-            local s=""
-            for i=1,n do
-                local r=math.random(1,#c)
-                s=s..c:sub(r,r)
-            end
-            return s
+local obfuscateScript = function(code)
+    local function randStr(n)
+        local c="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+        local s=""
+        for i=1,n do
+            local r=math.random(1,#c)
+            s=s..c:sub(r,r)
         end
-
-        -- Double encoding: base64 + shuffled + reverse base64 again
-        local function b64(data)
-            local b='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-            local out={} local bitstr=""
-            for i=1,#data do
-                local byte=data:byte(i)
-                for bit=7,0,-1 do
-                    bitstr=bitstr..((byte>>bit)&1)
-                end
-            end
-            local pad=(6-(#bitstr%6))%6
-            bitstr=bitstr..string.rep("0",pad)
-            for i=1,#bitstr,6 do
-                local chunk=bitstr:sub(i,i+5)
-                local val=tonumber(chunk,2)
-                out[#out+1]=b:sub(val+1,val+1)
-            end
-            return table.concat(out)..({[1]="==",[2]="="})[#data%3] or ""
-        end
-
-        local first=b64(code)
-        local shuffled="qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM9876543210+/"
-        local map={} local chars="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-        for i=1,#chars do map[chars:sub(i,i)]=shuffled:sub(i,i) end
-        local second=first:gsub(".",function(c) return map[c] or c end)
-        local final=b64(second)
-
-        -- Parts are shuffled with a random index mapping
-        local parts,order={},{}
-        local size=math.random(20,40)
-        for i=1,#final,size do
-            local ch=final:sub(i,i+size-1)
-            parts[#parts+1]=ch
-            order[#order+1]=#parts
-        end
-        for i=#order,2,-1 do
-            local j=math.random(i)
-            order[i],order[j]=order[j],order[i]
-        end
-
-        local partsVar="p_"..randStr(7)
-        local orderVar="o_"..randStr(7)
-        local decodeVar="d_"..randStr(7)
-
-        local out="--[[ Machine Layered Encode ]] \n"
-        out=out.."local "..partsVar.."={}\n"
-        for i,chunk in ipairs(parts) do
-            out=out..partsVar.."["..i.."]="..string.format("%q",chunk).."\n"
-        end
-        out=out.."local "..orderVar.."={"..table.concat(order,",").."}\n"
-
-        -- Fake decoder + real decoder
-        out=out.."local function fake_"..randStr(6).."(s) return s end\n"
-        out=out.."local function "..decodeVar.."(t,o)\n"
-        out=out.." local s=\"\"\n for i=1,#o do s=s..t[o[i]] end\n return s end\n"
-
-        -- Loader
-        out=out.."local payload="..decodeVar.."("..partsVar..","..orderVar..")\n"
-        out=out.."local l=loadstring or load\n"
-        out=out.."if not l then return end\n"
-        out=out.."pcall(function() l(payload)() end)\n"
-
-        return out
+        return s
     end
 
-    return obfuscateScript
+    -- Base64 encoder (no bitwise operators)
+    local function b64(data)
+        local b='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+        local out={}
+        local bytes = {data:byte(1, #data)}
+        local pad = (3 - (#bytes % 3)) % 3
+        for i=1,#bytes,3 do
+            local n = (bytes[i] or 0) * 65536 + (bytes[i+1] or 0) * 256 + (bytes[i+2] or 0)
+            local c1 = math.floor(n / 262144) % 64 + 1
+            local c2 = math.floor(n / 4096) % 64 + 1
+            local c3 = math.floor(n / 64) % 64 + 1
+            local c4 = n % 64 + 1
+            out[#out+1] = b:sub(c1,c1)..b:sub(c2,c2)..b:sub(c3,c3)..b:sub(c4,c4)
+        end
+        if pad > 0 then
+            out[#out] = out[#out]:sub(1, 4 - pad) .. string.rep("=", pad)
+        end
+        return table.concat(out)
+    end
+
+    local first=b64(code)
+    local shuffled="qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM9876543210+/"
+    local map={} local chars="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    for i=1,#chars do map[chars:sub(i,i)]=shuffled:sub(i,i) end
+    local second=first:gsub(".",function(c) return map[c] or c end)
+    local final=b64(second)
+
+    local parts,order={},{}
+    local size=math.random(20,40)
+    for i=1,#final,size do
+        local ch=final:sub(i,i+size-1)
+        parts[#parts+1]=ch
+        order[#order+1]=#parts
+    end
+    for i=#order,2,-1 do
+        local j=math.random(i)
+        order[i],order[j]=order[j],order[i]
+    end
+
+    local partsVar="p_"..randStr(7)
+    local orderVar="o_"..randStr(7)
+    local decodeVar="d_"..randStr(7)
+
+    local out="--[[ Machine Layered Encode ]] \n"
+    out=out.."local "..partsVar.."={}\n"
+    for i,chunk in ipairs(parts) do
+        out=out..partsVar.."["..i.."]="..string.format("%q",chunk).."\n"
+    end
+    out=out.."local "..orderVar.."={"..table.concat(order,",").."}\n"
+    out=out.."local function "..decodeVar.."(t,o)\n"
+    out=out.." local s=\"\"\n for i=1,#o do s=s..t[o[i]] end\n return s end\n"
+    out=out.."local payload="..decodeVar.."("..partsVar..","..orderVar..")\n"
+    out=out.."local l=loadstring or load\n"
+    out=out.."if not l then return end\n"
+    out=out.."pcall(function() l(payload)() end)\n"
+
+    return out
 end
