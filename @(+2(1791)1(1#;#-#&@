@@ -75,5 +75,7 @@ return function(scriptCode)
     "if not "..funcVar.." then error(err) end\n" ..
     "return "..funcVar.."()"
 
-    return loadstring(chunk)
+    local fn,err = loadstring(chunk)
+    if not fn then error(err) end
+    return fn()
 end
