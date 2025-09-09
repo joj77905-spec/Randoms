@@ -1,0 +1,79 @@
+math.randomseed(tick())
+
+local function randomString(len)
+    local chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+    local s = ""
+    for i = 1, len do
+        s = s .. chars:sub(math.random(1,#chars), math.random(1,#chars))
+    end
+    return s
+end
+
+local function base64encode(data)
+    local b='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+    local bitstr=""
+    for i=1,#data do
+        local byte=data:byte(i)
+        for bit=7,0,-1 do
+            bitstr = bitstr .. ((byte % 2^(bit+1) - byte % 2^bit > 0) and "1" or "0")
+        end
+    end
+    local pad = (6 - (#bitstr % 6)) % 6
+    for i=1,pad do bitstr = bitstr.."0" end
+    local out = {}
+    for i=1,#bitstr,6 do
+        local chunk = bitstr:sub(i,i+5)
+        local val=0
+        for j=1,6 do val = val*2 + (chunk:sub(j,j)=="1" and 1 or 0) end
+        out[#out+1] = b:sub(val+1,val+1)
+    end
+    local eq=""
+    local mod=#data%3
+    if mod==1 then eq="==" elseif mod==2 then eq="=" end
+    return table.concat(out)..eq
+end
+
+local function customEncode(str)
+    local map = {}
+    local chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    local shuffled = "QWERTYUIOPLKJHGFDSAZXCVBNMmnbvcxzlkjhgfdsapoiuytrewq0987654321+/"
+    for i=1,#chars do map[chars:sub(i,i)] = shuffled:sub(i,i) end
+    local result=""
+    for i=1,#str do result=result..(map[str:sub(i,i)] or str:sub(i,i)) end
+    return result
+end
+
+return function(scriptCode)
+    if not scriptCode or scriptCode=="" then return "" end
+    local b64 = base64encode(scriptCode)
+    local encoded = customEncode(b64)
+    local decoder1 = "d_"..randomString(8)
+    local decoder2 = "d_"..randomString(8)
+    local funcVar = "f_"..randomString(8)
+    local scriptVar = "s_"..randomString(8)
+
+    local parts = {}
+    for i=1,#encoded,30 do
+        parts[#parts+1] = encoded:sub(i,i+29)
+    end
+    local partsVar = "p_"..randomString(8)
+
+    local chunk = "local "..partsVar.."={}\n"
+    for i,part in ipairs(parts) do
+        chunk = chunk..partsVar.."["..i.."]="..string.format("%q",part)..";"
+    end
+
+    chunk = chunk ..
+    "local function concatParts(p)local s='' for i=1,#p do s=s..p[i] end return s end\n" ..
+    "local function "..decoder1.."(data)local map={} local chars='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/' local shuffled='QWERTYUIOPLKJHGFDSAZXCVBNMmnbvcxzlkjhgfdsapoiuytrewq0987654321+/' for i=1,#chars do map[shuffled:sub(i,i)]=chars:sub(i,i) end local result='' for i=1,#data do local c=data:sub(i,i) result=result..(map[c] or c) end return result end\n" ..
+    "local function "..decoder2.."(data)local b='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/' data=string.gsub(data,'[^'..b..'=]','') local bin='' local out={} for i=1,#data do local c=data:sub(i,i) if c=='=' then break end local idx=b:find(c) if not idx then return '' end local val=idx-1 for bit=6,1,-1 do bin=bin..(val%2^bit-val%2^(bit-1)>0 and '1' or '0') end while #bin>=8 do local byteStr=bin:sub(1,8) local num=0 for j=1,8 do num=num*2+(byteStr:sub(j,j)=='1' and 1 or 0) end out[#out+1]=string.char(num) bin=bin:sub(9) end end return table.concat(out) end\n" ..
+    "local "..scriptVar.."=concatParts("..partsVar..")\n" ..
+    "local tmp="..decoder1.."("..scriptVar..")\n" ..
+    "local decoded="..decoder2.."(tmp)\n" ..
+    "local loader=loadstring or load\n" ..
+    "local "..funcVar..",err=loader(decoded)\n" ..
+    "if not "..funcVar.." then error(err) end\n" ..
+    "return "..funcVar.."()"
+
+    return loadstring(chunk)
+end
